@@ -13,16 +13,16 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from helpers import attributes, make_run, note, score, write_mxl  # noqa: E402
+from helpers import attributes, make_run, note, score, write_mxl
 
-from omr_regress.align import align  # noqa: E402
-from omr_regress.book import measure_boxes, read_book  # noqa: E402
-from omr_regress.cli import main  # noqa: E402
-from omr_regress.compare import compare_input, compare_runs  # noqa: E402
-from omr_regress.inputs import find_inputs, find_reference, open_run  # noqa: E402
-from omr_regress.measures import duration_text, staff_measures, staves, tokens  # noqa: E402
-from omr_regress.musicxml import normalized_text, read_movements, read_score  # noqa: E402
-from omr_regress.report import write_html  # noqa: E402
+from omr_regress.align import align
+from omr_regress.book import measure_boxes, read_book
+from omr_regress.cli import main
+from omr_regress.compare import compare_input, compare_runs
+from omr_regress.inputs import find_inputs, find_reference, open_run
+from omr_regress.measures import duration_text, staff_measures, staves, tokens
+from omr_regress.musicxml import normalized_text, read_movements, read_score
+from omr_regress.report import write_html
 
 # Two measures of 4/4 at 2 divisions per quarter.
 M1 = attributes() + note("C5", 2) + note("D5", 2) + note("E5", 4, tie=True)
@@ -72,7 +72,7 @@ class MusicXmlTest(Temp):
         self.assertEqual([s.label for s in staves(s)], ["Piano/1", "Piano/2"])
 
     def test_clef_after_the_last_note_belongs_to_the_next_measure(self) -> None:
-        clef = '<attributes><clef><sign>F</sign><line>4</line></clef></attributes>'
+        clef = "<attributes><clef><sign>F</sign><line>4</line></clef></attributes>"
         s = read_score(self.write("c.musicxml", score([("Cello", [M1 + clef, M2])])))
         first, second = s.parts[0].measures
         self.assertEqual(first.clefs, {1: "G2"})
@@ -147,11 +147,24 @@ class AlignTest(unittest.TestCase):
 class CompareTest(Temp):
     def test_identical_changed_failed(self) -> None:
         changed = score([("Flute", [M1, note("E5", 4) + note("F5", 4)])])
-        a = open_run(make_run(self.tmp / "a", "base", {"x.png": score([("Flute", [M1, M2])]),
-                                                        "y.png": changed, "z.png": changed}))
-        b = open_run(make_run(self.tmp / "b", "fix", {"x.png": score([("Flute", [M1, M2])]),
-                                                       "y.png": score([("Flute", [M1, M2])]),
-                                                       "z.png": None}))
+        a = open_run(
+            make_run(
+                self.tmp / "a",
+                "base",
+                {"x.png": score([("Flute", [M1, M2])]), "y.png": changed, "z.png": changed},
+            )
+        )
+        b = open_run(
+            make_run(
+                self.tmp / "b",
+                "fix",
+                {
+                    "x.png": score([("Flute", [M1, M2])]),
+                    "y.png": score([("Flute", [M1, M2])]),
+                    "z.png": None,
+                },
+            )
+        )
         c = compare_runs(a, b)
         verdicts = {r.id: r.verdict for r in c.results}
         self.assertEqual(verdicts, {"x.png": "identical", "y.png": "changed", "z.png": "failed"})
@@ -197,12 +210,16 @@ class InputsTest(Temp):
             path.write_text("x")
         (root / "a" / "ground_truth.mxl").write_text("x")
         self.assertEqual(find_inputs(root), ["a/scan.png", "a/score.pdf", "b/page.png"])
-        self.assertEqual(find_reference("a/scan.png", root, None), [root / "a" / "ground_truth.mxl"])
+        self.assertEqual(
+            find_reference("a/scan.png", root, None), [root / "a" / "ground_truth.mxl"]
+        )
         self.assertEqual(find_reference("b/page.png", root, None), [root / "b" / "page.musicxml"])
         accepted = self.tmp / "refs" / "b/page.png"
         accepted.mkdir(parents=True)
         (accepted / "page.mxl").write_text("x")
-        self.assertEqual(find_reference("b/page.png", root, self.tmp / "refs"), [accepted / "page.mxl"])
+        self.assertEqual(
+            find_reference("b/page.png", root, self.tmp / "refs"), [accepted / "page.mxl"]
+        )
 
 
 class BookTest(Temp):
@@ -240,10 +257,19 @@ class CliTest(Temp):
         out = io.StringIO()
         with redirect_stdout(out):
             self.assertEqual(main(["accept", str(self.tmp / "a"), "--references", str(refs)]), 0)
-            code = main([
-                "compare", str(self.tmp / "a"), str(self.tmp / "b"), "--references", str(refs),
-                "--html", str(self.tmp / "r" / "report.html"), "--json", str(self.tmp / "r.json"),
-            ])
+            code = main(
+                [
+                    "compare",
+                    str(self.tmp / "a"),
+                    str(self.tmp / "b"),
+                    "--references",
+                    str(refs),
+                    "--html",
+                    str(self.tmp / "r" / "report.html"),
+                    "--json",
+                    str(self.tmp / "r.json"),
+                ]
+            )
         self.assertEqual(code, 1)
         self.assertIn("worse", out.getvalue())
         data = json.loads((self.tmp / "r.json").read_text())
@@ -287,8 +313,19 @@ class RunTest(Temp):
             (inputs / name).parent.mkdir(parents=True, exist_ok=True)
             (inputs / name).write_bytes(b"")
         run = self.tmp / "run"
-        args = ["run", "--audiveris", str(self.launcher()), "--inputs", str(inputs),
-                "--out", str(run), "--timeout", "8", "--jobs", "3"]
+        args = [
+            "run",
+            "--audiveris",
+            str(self.launcher()),
+            "--inputs",
+            str(inputs),
+            "--out",
+            str(run),
+            "--timeout",
+            "8",
+            "--jobs",
+            "3",
+        ]
         with redirect_stdout(io.StringIO()):
             self.assertEqual(main(args), 0)
         r = open_run(run)

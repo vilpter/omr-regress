@@ -48,9 +48,7 @@ def musicxml_files(folder: Path) -> list[Path]:
     return sorted(p for p in folder.iterdir() if p.suffix.lower() in MUSICXML_SUFFIXES)
 
 
-def find_reference(
-    input_id: str, inputs: Path | None, references: Path | None
-) -> list[Path]:
+def find_reference(input_id: str, inputs: Path | None, references: Path | None) -> list[Path]:
     """The reference files of an input (several for a book of movements), or []."""
     if references is not None:
         files = musicxml_files(references / input_id)

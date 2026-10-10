@@ -208,18 +208,15 @@ def _reading(label: str, m: StaffMeasure | None, other: StaffMeasure | None) -> 
 
 def _block(r: InputResult, group: list[Change], images: _Images, c: Comparison) -> str:
     first = group[0]
-    if first.b is not None and (first.staff, first.b) in r.boxes_b:
-        crop = _crop(images, c.run_b.book(r.id), r.boxes_b[(first.staff, first.b)])
-    elif first.a is not None and (first.staff, first.a) in r.boxes_a:
-        crop = _crop(images, c.run_a.book(r.id), r.boxes_a[(first.staff, first.a)])
-    else:
-        crop = ""
+    crop = ""
+    if first.b is not None and (box := r.box("b", first.staff, first.b)) is not None:
+        crop = _crop(images, c.run_b.book(r.id), box)
+    elif first.a is not None and (box := r.box("a", first.staff, first.a)) is not None:
+        crop = _crop(images, c.run_a.book(r.id), box)
     number = first.b_measure.number if first.b_measure else first.a_measure.number
     parts = [f'<div class="block"><div>Measure {_e(number)}</div>{crop}']
     for ch in group:
-        parts.append(
-            f'<div><span class="v {ch.verdict}">{ch.verdict}</span> {_e(ch.label)}</div>'
-        )
+        parts.append(f'<div><span class="v {ch.verdict}">{ch.verdict}</span> {_e(ch.label)}</div>')
         if r.has_reference:
             # Mark what each run reads differently from the reference
             parts.append(_reading("reference", ch.reference, ch.reference))
@@ -254,7 +251,7 @@ def _section(r: InputResult, images: _Images, c: Comparison, limit: int) -> str:
     for ch in r.changes:
         key = ("b", ch.b) if ch.b is not None else ("a", ch.a)
         groups.setdefault(key, []).append(ch)
-    ordered = sorted(groups.values(), key=lambda g: (g[0].b if g[0].b is not None else g[0].a or 0))
+    ordered = sorted(groups.values(), key=lambda g: g[0].b if g[0].b is not None else g[0].a or 0)
     for group in ordered[:limit]:
         out.append(_block(r, group, images, c))
     if len(ordered) > limit:
@@ -282,21 +279,25 @@ def write_html(c: Comparison, path: Path, limit: int = 40) -> None:
             f"<td>{r.fixed if ref else '-'}</td><td>{r.broken if ref else '-'}</td></tr>"
         )
     sections = [_section(r, images, c, limit) for r in c.results if r.verdict != "identical"]
-    filters = [("all", "All"), ("worse failed mixed", "Worse"), ("better recovered", "Better"),
-               ("changed same", "Changed")]
+    filters = [
+        ("all", "All"),
+        ("worse failed mixed", "Worse"),
+        ("better recovered", "Better"),
+        ("changed same", "Changed"),
+    ]
     page = f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>OMR regression report</title><style>{STYLE}</style></head><body>
 <h1>{_e(c.run_a.label)} &rarr; {_e(c.run_b.label)}</h1>
-<p class="muted">{len(c.results)} inputs: {_e(', '.join(f'{n} {v}' for v, n in counts.items()))}.
+<p class="muted">{len(c.results)} inputs: {_e(", ".join(f"{n} {v}" for v, n in counts.items()))}.
 Exact: share of the reference's staff measures read exactly. Highlighted: what a run reads
 differently from the reference (from the other run when there is no reference).</p>
-<nav>{''.join(f'<button data-show="{s}"{" class=on" if s == "all" else ""}>{t}</button>' for s, t in filters)}</nav>
+<nav>{"".join(f'<button data-show="{s}"{" class=on" if s == "all" else ""}>{t}</button>' for s, t in filters)}</nav>
 <table><thead><tr><th>Input</th><th>Verdict</th><th>Parts</th><th>Measures</th><th>Exact</th>
 <th>Notes F1</th><th>Changed</th><th>Fixed</th><th>Broken</th></tr></thead>
-<tbody>{''.join(rows)}</tbody></table>
-{''.join(sections)}
+<tbody>{"".join(rows)}</tbody></table>
+{"".join(sections)}
 <script>{SCRIPT}</script></body></html>
 """
     path.parent.mkdir(parents=True, exist_ok=True)

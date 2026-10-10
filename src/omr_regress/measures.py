@@ -12,6 +12,7 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass
 from fractions import Fraction
+from functools import cached_property
 from itertools import groupby
 
 from omr_regress.musicxml import Measure, Note, Score
@@ -46,6 +47,12 @@ class StaffMeasure:
     def same_voices(self, other: StaffMeasure) -> bool:
         return self.voiced == other.voiced
 
+    @cached_property
+    def counts(self) -> Counter:
+        """The events, counted, for aligning measures that differ."""
+        return Counter(self.events)
+
+    @cached_property
     def pitched(self) -> Counter:
         """The notes as (onset, pitch, duration), for precision and recall."""
         return Counter((n.onset, n.pitch, n.duration) for n in self.notes if n.pitch)

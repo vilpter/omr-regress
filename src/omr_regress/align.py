@@ -3,7 +3,6 @@ instead of shifting every measure after it (Needleman-Wunsch, unit gap cost)."""
 
 from __future__ import annotations
 
-from collections import Counter
 from collections.abc import Sequence
 
 from omr_regress.measures import StaffMeasure
@@ -15,7 +14,7 @@ def _cost(a: StaffMeasure, b: StaffMeasure) -> float:
     """0 for equal measures, up to 1 for measures with nothing in common."""
     if a == b:
         return 0.0
-    ca, cb = Counter(a.events), Counter(b.events)
+    ca, cb = a.counts, b.counts
     total = sum(ca.values()) + sum(cb.values())
     if total == 0:
         return 0.5  # both empty, different headers

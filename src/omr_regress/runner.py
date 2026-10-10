@@ -106,7 +106,7 @@ def run_set(
     manifest.update(
         {
             "label": label or manifest.get("label") or run.name,
-            "audiveris": str(audiveris),
+            "audiveris": str(audiveris.resolve() if audiveris.exists() else audiveris),
             "inputs": str(inputs.resolve()),
             "options": options or [],
             "started": manifest.get("started")

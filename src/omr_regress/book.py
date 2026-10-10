@@ -9,8 +9,10 @@ multi-measure rest is one stack and one exported measure.
 
 from __future__ import annotations
 
+import re
 import zipfile
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
@@ -46,6 +48,7 @@ class Book:
             return z.read(s.image)
 
 
+@lru_cache(maxsize=32)
 def read_book(path: Path) -> Book | None:
     """The book's sheets and measure columns; None if it cannot be read."""
     try:
@@ -63,28 +66,52 @@ def read_book(path: Path) -> Book | None:
             xml = f"sheet#{number}/sheet#{number}.xml"
             if xml not in names:
                 continue  # sheet not transcribed: its measures are not exported
-            sheet = ET.fromstring(z.read(xml))
-            picture = sheet.find("picture")
+            width, height, systems = _read_sheet(z.read(xml))
             binary = f"sheet#{number}/BINARY.png"
-            sheets.append(
-                Sheet(
-                    number,
-                    int(picture.get("width", "0")) if picture is not None else 0,
-                    int(picture.get("height", "0")) if picture is not None else 0,
-                    binary if binary in names else None,
-                )
-            )
-            for system in sheet.findall("page/system"):
-                ys = [
-                    float(pt.get("y", "0"))
-                    for pt in system.findall("part/staff/lines/line/point")
-                ]
+            sheets.append(Sheet(number, width, height, binary if binary in names else None))
+            for stacks, ys in systems:
                 top, bottom = (min(ys), max(ys)) if ys else (0.0, 0.0)
-                for stack in system.findall("stack"):
-                    left = float(stack.get("left", "0"))
-                    right = float(stack.get("right", str(left)))
+                for left, right in stacks:
                     columns.append(Box(number, left, top, right - left, bottom - top))
     return Book(path, sheets, columns)
+
+
+# The few tags read from a sheet file, in document order.
+_TAGS = re.compile(rb"<(picture|system|stack|lines|/lines|point)\b([^>]*)>")
+_ATTR = re.compile(rb'([\w-]+)="([^"]*)"')
+
+
+def _read_sheet(
+    data: bytes,
+) -> tuple[int, int, list[tuple[list[tuple[float, float]], list[float]]]]:
+    """The picture's size, and each system's stacks (left, right) and staff line ys.
+
+    A sheet file holds every symbol Audiveris found, megabytes of them. Building it into
+    a tree takes about a second; the tags needed here are found by a scan of its text.
+    Staff lines (``system/part/staff/lines/line/point``) are the only points it has."""
+    width = height = 0
+    systems: list[tuple[list[tuple[float, float]], list[float]]] = []
+    in_lines = False
+    for m in _TAGS.finditer(data):
+        tag = m.group(1)
+        if tag == b"lines":
+            in_lines = True
+        elif tag == b"/lines":
+            in_lines = False
+        elif tag == b"point":
+            if in_lines and systems:
+                y = re.search(rb'\by="([^"]*)"', m.group(2))
+                systems[-1][1].append(float(y.group(1)) if y else 0.0)
+        else:
+            attrs = {k.decode(): v.decode() for k, v in _ATTR.findall(m.group(2))}
+            if tag == b"picture":
+                width, height = int(attrs.get("width", "0")), int(attrs.get("height", "0"))
+            elif tag == b"system":
+                systems.append(([], []))
+            elif systems:  # a stack
+                left = float(attrs.get("left", "0"))
+                systems[-1][0].append((left, float(attrs.get("right", left))))
+    return width, height, systems
 
 
 def measure_boxes(book: Book, added: list[bool]) -> list[Box | None]:

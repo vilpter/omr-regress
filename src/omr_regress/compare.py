@@ -15,6 +15,7 @@ or *worse* when both scores move the same way, *mixed* when they disagree.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from omr_regress.align import Pair, align
 from omr_regress.book import Box, measure_boxes, read_book
@@ -23,8 +24,17 @@ from omr_regress.measures import Staff, StaffMeasure, staff_measures, staves
 from omr_regress.musicxml import MusicXmlError, Score, normalized_text, read_movements
 
 # Order in which inputs are listed: what needs a look first.
-VERDICTS = ["worse", "failed", "mixed", "changed", "better", "recovered", "same", "identical",
-            "no export"]
+VERDICTS = [
+    "worse",
+    "failed",
+    "mixed",
+    "changed",
+    "better",
+    "recovered",
+    "same",
+    "identical",
+    "no export",
+]
 
 
 @dataclass
@@ -71,9 +81,22 @@ class InputResult:
     changes: list[Change] = field(default_factory=list)
     staves_only_a: list[str] = field(default_factory=list)
     staves_only_b: list[str] = field(default_factory=list)
-    boxes_a: dict[tuple[int, int], Box] = field(default_factory=dict)
-    boxes_b: dict[tuple[int, int], Box] = field(default_factory=dict)
     error: str | None = None
+    # Per side ("a", "b"): the book, and for each staff which measures the reader added
+    # for a multi-measure rest. Page boxes are read from the book when first asked for.
+    layouts: dict[str, tuple[Path | None, list[list[bool]]]] = field(default_factory=dict)
+    _boxes: dict[str, list[list[Box | None]]] = field(default_factory=dict, repr=False)
+
+    def box(self, side: str, staff: int, index: int) -> Box | None:
+        """Where measure ``index`` of ``staff`` is on the page, in run ``side``'s book."""
+        if side not in self._boxes:
+            path, added = self.layouts.get(side, (None, []))
+            book = read_book(path) if path else None
+            self._boxes[side] = [measure_boxes(book, a) if book else [] for a in added]
+        boxes = self._boxes[side]
+        if staff < len(boxes) and index < len(boxes[staff]):
+            return boxes[staff][index]
+        return None
 
     @property
     def fixed(self) -> int:
@@ -98,14 +121,16 @@ def _part_names(score: Score) -> list[str]:
     return [p.name or p.abbreviation or p.id for p in score.parts]
 
 
-def _metrics(score: Score, measures: list[list[StaffMeasure]], ref: list[list[StaffMeasure]] | None) -> Metrics:
+def _metrics(
+    score: Score, measures: list[list[StaffMeasure]], ref: list[list[StaffMeasure]] | None
+) -> Metrics:
     m = Metrics(len(score.parts), score.staff_count, score.measure_count)
     if ref is None:
         return m
     exact = total = 0
     matched = 0
-    ref_notes = sum(sum(x.pitched().values()) for staff in ref for x in staff)
-    run_notes = sum(sum(x.pitched().values()) for staff in measures for x in staff)
+    ref_notes = sum(sum(x.pitched.values()) for staff in ref for x in staff)
+    run_notes = sum(sum(x.pitched.values()) for staff in measures for x in staff)
     for k, ref_staff in enumerate(ref):
         total += len(ref_staff)
         if k >= len(measures):
@@ -115,7 +140,7 @@ def _metrics(score: Score, measures: list[list[StaffMeasure]], ref: list[list[St
                 continue
             r, x = ref_staff[i], measures[k][j]
             exact += r == x
-            matched += sum((r.pitched() & x.pitched()).values())
+            matched += sum((r.pitched & x.pitched).values())
     m.exact = exact / total if total else None
     m.precision = matched / run_notes if run_notes else (1.0 if not ref_notes else 0.0)
     m.recall = matched / ref_notes if ref_notes else 1.0
@@ -127,18 +152,11 @@ def _reference_index(pairs: list[Pair]) -> dict[int, int]:
     return {j: i for i, j in pairs if i is not None and j is not None}
 
 
-def _boxes(run: Run, input_id: str, score: Score, layout: list[Staff]) -> dict[tuple[int, int], Box]:
-    path = run.book(input_id)
-    book = read_book(path) if path else None
-    if book is None:
-        return {}
-    out = {}
-    for k, s in enumerate(layout):
-        added = [m.added for m in score.parts[s.part].measures]
-        for i, box in enumerate(measure_boxes(book, added)):
-            if box is not None:
-                out[(k, i)] = box
-    return out
+def _layout(
+    run: Run, input_id: str, score: Score, layout: list[Staff]
+) -> tuple[Path | None, list[list[bool]]]:
+    added = [[m.added for m in score.parts[s.part].measures] for s in layout]
+    return run.book(input_id), added
 
 
 def _judge(a: Metrics, b: Metrics) -> str:
@@ -154,7 +172,9 @@ def _judge(a: Metrics, b: Metrics) -> str:
     return "changed"
 
 
-def compare_input(run_a: Run, run_b: Run, input_id: str, references=None, inputs=None) -> InputResult:
+def compare_input(
+    run_a: Run, run_b: Run, input_id: str, references=None, inputs=None
+) -> InputResult:
     status_a = run_a.status(input_id).get("status", "missing")
     status_b = run_b.status(input_id).get("status", "missing")
     result = InputResult(input_id, status_a, status_b)
@@ -188,8 +208,8 @@ def compare_input(run_a: Run, run_b: Run, input_id: str, references=None, inputs
     result.parts_a, result.parts_b = _part_names(score_a), _part_names(score_b)
     result.metrics_a = _metrics(score_a, ma, mref)
     result.metrics_b = _metrics(score_b, mb, mref)
-    result.staves_only_a = [s.label for s in layout_a[len(layout_b):]]
-    result.staves_only_b = [s.label for s in layout_b[len(layout_a):]]
+    result.staves_only_a = [s.label for s in layout_a[len(layout_b) :]]
+    result.staves_only_b = [s.label for s in layout_b[len(layout_a) :]]
     for k in range(min(len(ma), len(mb))):
         ref_a = ref_b = {}
         if mref is not None and k < len(mref):
@@ -200,7 +220,9 @@ def compare_input(run_a: Run, run_b: Run, input_id: str, references=None, inputs
             y = mb[k][j] if j is not None else None
             if x is not None and y is not None and x == y:
                 if not x.same_voices(y):
-                    result.changes.append(Change(k, layout_b[k].label, i, j, x, y, verdict="voices"))
+                    result.changes.append(
+                        Change(k, layout_b[k].label, i, j, x, y, verdict="voices")
+                    )
                 continue
             change = Change(k, layout_b[k].label, i, j, x, y)
             if mref is not None and k < len(mref):
@@ -210,7 +232,9 @@ def compare_input(run_a: Run, run_b: Run, input_id: str, references=None, inputs
                 change.reference = mref[k][ri] if ri is not None else None
                 a_ok = i is not None and i in ref_a and mref[k][ref_a[i]] == x
                 b_ok = j is not None and j in ref_b and mref[k][ref_b[j]] == y
-                change.verdict = "fixed" if b_ok and not a_ok else "broken" if a_ok and not b_ok else "changed"
+                change.verdict = (
+                    "fixed" if b_ok and not a_ok else "broken" if a_ok and not b_ok else "changed"
+                )
             result.changes.append(change)
     if not (result.changes or result.staves_only_a or result.staves_only_b):
         result.verdict = "same"  # the exports differ in what is not compared (text, layout)
@@ -218,15 +242,18 @@ def compare_input(run_a: Run, run_b: Run, input_id: str, references=None, inputs
         result.verdict = _judge(result.metrics_a, result.metrics_b)
     else:
         result.verdict = "changed"
-    result.boxes_a = _boxes(run_a, input_id, score_a, layout_a)
-    result.boxes_b = _boxes(run_b, input_id, score_b, layout_b)
+    result.layouts = {
+        "a": _layout(run_a, input_id, score_a, layout_a),
+        "b": _layout(run_b, input_id, score_b, layout_b),
+    }
     return result
 
 
-def compare_runs(run_a: Run, run_b: Run, ids: list[str] | None = None, references=None, inputs=None) -> Comparison:
+def compare_runs(
+    run_a: Run, run_b: Run, ids: list[str] | None = None, references=None, inputs=None
+) -> Comparison:
     if ids is None:
         ids = sorted(set(run_a.ids()) & set(run_b.ids()))
     results = [compare_input(run_a, run_b, i, references, inputs) for i in ids]
     results.sort(key=lambda r: (VERDICTS.index(r.verdict), -r.broken, r.id))
     return Comparison(run_a, run_b, results)
-

@@ -33,7 +33,9 @@ def _run(args: argparse.Namespace) -> int:
         force=args.force,
     )
     bad = [i for i, r in results.items() if r["status"] != "ok"]
-    print(f"{len(results)} inputs run, {len(ids) - len(results)} already done, {len(bad)} without export")
+    print(
+        f"{len(results)} inputs run, {len(ids) - len(results)} already done, {len(bad)} without export"
+    )
     return 0
 
 
@@ -41,7 +43,9 @@ def _compare(args: argparse.Namespace) -> int:
     run_a, run_b = open_run(Path(args.a)), open_run(Path(args.b))
     ids = None
     if args.only:
-        ids = [i for i in sorted(set(run_a.ids()) & set(run_b.ids())) if any(s in i for s in args.only)]
+        ids = [
+            i for i in sorted(set(run_a.ids()) & set(run_b.ids())) if any(s in i for s in args.only)
+        ]
     comparison = compare_runs(
         run_a,
         run_b,
@@ -55,8 +59,11 @@ def _compare(args: argparse.Namespace) -> int:
         print(f"report: {args.html}")
     if args.json:
         write_json(comparison, Path(args.json))
-    failing = {"worse": ("worse", "failed", "mixed"), "change": ("worse", "failed", "mixed",
-               "changed", "better", "recovered", "same"), "never": ()}[args.fail_on]
+    failing = {
+        "worse": ("worse", "failed", "mixed"),
+        "change": ("worse", "failed", "mixed", "changed", "better", "recovered", "same"),
+        "never": (),
+    }[args.fail_on]
     return 1 if any(r.verdict in failing for r in comparison.results) else 0
 
 

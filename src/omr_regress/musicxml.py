@@ -275,6 +275,4 @@ def read_movements(paths: list[Path]) -> Score:
 def normalized_text(path: Path) -> str:
     """The MusicXML text without what changes from run to run (encoding date, software)."""
     text = _text(path).decode("utf-8", errors="replace")
-    return re.sub(
-        r"<encoding-date>[^<]*</encoding-date>|<software>[^<]*</software>", "", text
-    )
+    return re.sub(r"<encoding-date>[^<]*</encoding-date>|<software>[^<]*</software>", "", text)

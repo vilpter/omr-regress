@@ -14,8 +14,18 @@ HEAD = """<?xml version="1.0" encoding="UTF-8"?>
 """
 
 
-def note(pitch: str | None, duration: int, *, voice: int = 1, staff: int = 1, chord=False,
-         tie=False, slur=None, dots=0, measure_rest=False) -> str:
+def note(
+    pitch: str | None,
+    duration: int,
+    *,
+    voice: int = 1,
+    staff: int = 1,
+    chord=False,
+    tie=False,
+    slur=None,
+    dots=0,
+    measure_rest=False,
+) -> str:
     """A <note>; pitch like "C5", "F#4", "Bb3", or None for a rest."""
     if pitch is None:
         body = '<rest measure="yes"/>' if measure_rest else "<rest/>"
